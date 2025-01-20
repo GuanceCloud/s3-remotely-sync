@@ -9,7 +9,7 @@ from .lock import S3SyncLock
 from .metadata import S3SyncMetadata
 from .utils import get_local_files
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)
 
 class S3Sync:
@@ -24,7 +24,8 @@ class S3Sync:
                  secret_key: Optional[str] = None,
                  region: Optional[str] = None,
                  extensions: Optional[List[str]] = None,
-                 blacklist: bool = False):
+                 blacklist: bool = False,
+                 progress_callback: Optional[callable] = None):
         self.local_path = os.path.abspath(local_path)
         self.bucket = bucket
         self.prefix = prefix.rstrip('/')
@@ -60,6 +61,8 @@ class S3Sync:
         )
 
         self.transfer = S3Transfer(self.s3_client, transfer_config)
+
+        self.progress_callback = progress_callback or (lambda op, fp: None)
 
     def sync(self):
         """Perform synchronization between local and S3"""
@@ -104,13 +107,25 @@ class S3Sync:
 
     def _upload_file(self, rel_path: str, s3_key: str):
         """Upload a file to S3"""
-        local_path = os.path.join(self.local_path, rel_path)
-        logger.info(f"Uploading: {rel_path}")
-        self.transfer.upload_file(local_path, self.bucket, s3_key)
+        try:
+            local_path = os.path.join(self.local_path, rel_path)
+            logger.info(f"upload: {rel_path}")
+            self.s3_client.upload_file(local_path, self.bucket, s3_key)
+            self.progress_callback('upload', rel_path)
+        except Exception as e:
+            logger.error(f"upload failed {rel_path}: {str(e)}")
+            self.progress_callback('fail', rel_path)
+            raise
 
     def _download_file(self, rel_path: str, s3_key: str):
         """Download a file from S3"""
-        local_path = os.path.join(self.local_path, rel_path)
-        os.makedirs(os.path.dirname(local_path), exist_ok=True)
-        logger.info(f"Downloading: {rel_path}")
-        self.transfer.download_file(self.bucket, s3_key, local_path)
+        try:
+            local_path = os.path.join(self.local_path, rel_path)
+            os.makedirs(os.path.dirname(local_path), exist_ok=True)
+            logger.info(f"download: {rel_path}")
+            self.s3_client.download_file(self.bucket, s3_key, local_path)
+            self.progress_callback('download', rel_path)
+        except Exception as e:
+            logger.error(f"download failed {rel_path}: {str(e)}")
+            self.progress_callback('fail', rel_path)
+            raise
