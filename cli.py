@@ -33,10 +33,22 @@ class SyncStats:
         self.failed = 0
         self.start_time = time.time()
         
+        # 创建扫描进度条
+        self.scan_pbar = tqdm(
+            desc="扫描文件中",
+            unit="files",
+            bar_format="{desc:<30} |{bar:50}| {n_fmt} files scanned",
+            colour="cyan",
+            ncols=120,
+            position=0,
+            leave=True
+        )
+        
         # 先扫描获取文件总数
         self.total_files = self._count_files(local_path, extensions, blacklist)
+        self.scan_pbar.close()
         
-        # 创建进度条，设置总数
+        # 创建同步进度条
         self.pbar = tqdm(
             total=self.total_files,
             desc="准备同步",
@@ -58,35 +70,8 @@ class SyncStats:
                     if blacklist == (ext in extensions):
                         continue
                 total += 1
+                self.scan_pbar.update(1)
         return total
-
-    def print_summary(self):
-        self.pbar.close()
-        elapsed_time = time.time() - self.start_time
-        total_files = self.uploaded + self.downloaded + self.skipped + self.failed
-
-        # create statistics table
-        table = Table(box=box.ROUNDED, show_header=False, border_style="bright_blue")
-        table.add_column("Item", style="cyan")
-        table.add_column("Value", style="green")
-        
-        table.add_row("file count", f"{total_files:,} files")
-        table.add_row("upload file", f"[green]✓ {self.uploaded:,} 个[/green]")
-        table.add_row("download file", f"[green]✓ {self.downloaded:,} 个[/green]")
-        table.add_row("skip file", f"[yellow]- {self.skipped:,} 个[/yellow]")
-        table.add_row("failed file", f"[red]× {self.failed:,} 个[/red]")
-        table.add_row("total time", f"{elapsed_time:.1f} seconds")
-        
-        # use panel to wrap statistics
-        panel = Panel(
-            table,
-            title="[bold cyan]sync complete statistics[/bold cyan]",
-            border_style="bright_blue",
-            padding=(1, 2)
-        )
-        
-        console.print("\n")  # add empty line
-        console.print(panel)
 
     def update_progress(self, operation, filepath):
         """更新进度条和统计信息"""
@@ -105,6 +90,33 @@ class SyncStats:
             self.pbar.set_description(f"× 失败: {filename[:30]:<30}")
         
         self.pbar.update(1)
+
+    def print_summary(self):
+        self.pbar.close()
+        elapsed_time = time.time() - self.start_time
+        total_files = self.uploaded + self.downloaded + self.skipped + self.failed
+
+        # 创建统计表格
+        table = Table(box=box.ROUNDED, show_header=False, border_style="bright_blue")
+        table.add_column("Item", style="cyan")
+        table.add_column("Value", style="green")
+        
+        table.add_row("file count", f"{total_files:,} files")
+        table.add_row("upload file", f"[green]✓ {self.uploaded:,} 个[/green]")
+        table.add_row("download file", f"[green]✓ {self.downloaded:,} 个[/green]")
+        table.add_row("skip file", f"[yellow]- {self.skipped:,} 个[/yellow]")
+        table.add_row("failed file", f"[red]× {self.failed:,} 个[/red]")
+        table.add_row("total time", f"{elapsed_time:.1f} seconds")
+        
+        panel = Panel(
+            table,
+            title="[bold cyan]sync complete statistics[/bold cyan]",
+            border_style="bright_blue",
+            padding=(1, 2)
+        )
+        
+        console.print("\n")
+        console.print(panel)
 
 def main():
     parser = argparse.ArgumentParser(description='S3 Sync Tool')
@@ -130,36 +142,36 @@ def main():
         logger.error("Access key and secret key must be provided either through arguments or environment variables")
         sys.exit(1)
 
-    # 创建 SyncStats 实例时传入必要参数
-    stats = SyncStats(
-        local_path=args.local_path,
-        extensions=args.extensions,
-        blacklist=args.blacklist
-    )
-    
-    def progress_callback(operation, filepath):
-        """进度回调函数"""
-        stats.update_progress(operation, filepath)
-        
-    syncer = S3Sync(
-        local_path=args.local_path,
-        bucket=args.bucket,
-        prefix=args.prefix,
-        endpoint_url=args.endpoint_url,
-        access_key=access_key,
-        secret_key=secret_key,
-        region=region,
-        extensions=args.extensions,
-        blacklist=args.blacklist,
-        progress_callback=progress_callback
-    )
-
     try:
-        console.print("[bold cyan]开始同步...[/bold cyan]\n")
+        stats = SyncStats(
+            local_path=args.local_path,
+            extensions=args.extensions,
+            blacklist=args.blacklist
+        )
+        
+        console.print("\n[bold cyan]开始同步...[/bold cyan]\n")
+        
+        def progress_callback(operation, filepath):
+            stats.update_progress(operation, filepath)
+        
+        syncer = S3Sync(
+            local_path=args.local_path,
+            bucket=args.bucket,
+            prefix=args.prefix,
+            endpoint_url=args.endpoint_url,
+            access_key=access_key,
+            secret_key=secret_key,
+            region=region,
+            extensions=args.extensions,
+            blacklist=args.blacklist,
+            progress_callback=progress_callback
+        )
+
         syncer.sync()
         stats.print_summary()
     except Exception as e:
-        stats.pbar.close()
+        if hasattr(stats, 'pbar'):
+            stats.pbar.close()
         console.print(f"[bold red]同步失败: {str(e)}[/bold red]")
         sys.exit(1)
 
