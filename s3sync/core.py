@@ -1,7 +1,7 @@
 import os
 import time
 import logging
-from typing import List, Optional
+from typing import List, Optional, Dict
 import boto3
 from botocore.config import Config
 from s3transfer import TransferConfig, S3Transfer
@@ -66,8 +66,57 @@ class S3Sync:
         self.progress_callback = progress_callback or (lambda op, fp: None)
         self.scan_callback = scan_callback or (lambda: None)
 
+    def _get_file_times(self, filepath: str) -> Dict[str, float]:
+        """get file creation and modification time"""
+        stat = os.stat(filepath)
+        try:
+            ctime = stat.st_birthtime  # macOS
+        except AttributeError:
+            ctime = stat.st_ctime  # other system use ctime
+        
+        return {
+            'ctime': ctime,
+            'mtime': stat.st_mtime
+        }
+
+    def _set_file_times(self, filepath: str, times: Dict[str, float]):
+        """set file access and modification time"""
+        os.utime(filepath, (times['mtime'], times['mtime']))
+
+    def _upload_file(self, rel_path: str, s3_key: str):
+        """Upload a file to S3"""
+        try:
+            local_path = os.path.join(self.local_path, rel_path)
+            logger.info(f"上传: {rel_path}")
+            
+            self.s3_client.upload_file(local_path, self.bucket, s3_key)
+            
+            self.progress_callback('upload', rel_path)
+        except Exception as e:
+            logger.error(f"upload {rel_path} failed: {str(e)}")
+            self.progress_callback('fail', rel_path)
+            raise
+
+    def _download_file(self, rel_path: str, s3_key: str, file_times: Dict[str, float]):
+        """Download a file from S3"""
+        try:
+            local_path = os.path.join(self.local_path, rel_path)
+            os.makedirs(os.path.dirname(local_path), exist_ok=True)
+            logger.info(f"下载: {rel_path}")
+            
+            self.s3_client.download_file(self.bucket, s3_key, local_path)
+            
+            if file_times:
+                self._set_file_times(local_path, file_times)
+            
+            self.progress_callback('download', rel_path)
+        except Exception as e:
+            logger.error(f"download {rel_path} failed: {str(e)}")
+            self.progress_callback('fail', rel_path)
+            raise
+
     def sync(self):
-        """Perform synchronization between local and S3"""
+        """perform sync between local and S3"""
         if not self.lock.acquire():
             logger.error("Another sync process is running")
             return
@@ -84,58 +133,37 @@ class S3Sync:
                     
                     if local_mtime > s3_mtime:
                         self._upload_file(rel_path, s3_key)
+                        file_times = self._get_file_times(os.path.join(self.local_path, rel_path))
                         metadata[rel_path] = {
-                            'mtime': local_mtime,
+                            'ctime': file_times['ctime'],
+                            'mtime': file_times['mtime'],
                             'synced_at': time.time()
                         }
                     elif local_mtime < s3_mtime:
-                        self._download_file(rel_path, s3_key)
+                        self._download_file(rel_path, s3_key, metadata.get(rel_path))
                 else:
                     self._upload_file(rel_path, s3_key)
+                    file_times = self._get_file_times(os.path.join(self.local_path, rel_path))
                     metadata[rel_path] = {
-                        'mtime': local_mtime,
+                        'ctime': file_times['ctime'],
+                        'mtime': file_times['mtime'],
                         'synced_at': time.time()
                     }
 
             for rel_path in metadata:
                 if rel_path not in local_files:
                     s3_key = f"{self.prefix}/{rel_path}"
-                    self._download_file(rel_path, s3_key)
+                    self._download_file(rel_path, s3_key, metadata.get(rel_path))
 
             self.metadata.save(metadata)
 
         finally:
             self.lock.release()
 
-    def _upload_file(self, rel_path: str, s3_key: str):
-        """Upload a file to S3"""
-        try:
-            local_path = os.path.join(self.local_path, rel_path)
-            logger.info(f"upload: {rel_path}")
-            self.s3_client.upload_file(local_path, self.bucket, s3_key)
-            self.progress_callback('upload', rel_path)
-        except Exception as e:
-            logger.error(f"upload failed {rel_path}: {str(e)}")
-            self.progress_callback('fail', rel_path)
-            raise
-
-    def _download_file(self, rel_path: str, s3_key: str):
-        """Download a file from S3"""
-        try:
-            local_path = os.path.join(self.local_path, rel_path)
-            os.makedirs(os.path.dirname(local_path), exist_ok=True)
-            logger.info(f"download: {rel_path}")
-            self.s3_client.download_file(self.bucket, s3_key, local_path)
-            self.progress_callback('download', rel_path)
-        except Exception as e:
-            logger.error(f"download failed {rel_path}: {str(e)}")
-            self.progress_callback('fail', rel_path)
-            raise
-
     def get_sync_stats(self) -> tuple[int, int, int]:
-        """获取同步统计信息
+        """get sync stats
         Returns:
-            tuple: (总文件数, 待上传数, 待下载数)
+            tuple: (total_files, to_upload, to_download)
         """
         to_upload = 0
         to_download = 0
@@ -145,7 +173,6 @@ class S3Sync:
         local_files = get_local_files(self.local_path, self.extensions, self.blacklist)
         total_files = len(local_files)
 
-        # 计算需要上传的文件
         for rel_path, local_mtime in local_files.items():
             if rel_path in metadata:
                 s3_mtime = metadata[rel_path]['mtime']
@@ -154,7 +181,6 @@ class S3Sync:
             else:
                 to_upload += 1
 
-        # 计算需要下载的文件
         for rel_path in metadata:
             if rel_path not in local_files:
                 to_download += 1
