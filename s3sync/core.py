@@ -25,7 +25,8 @@ class S3Sync:
                  region: Optional[str] = None,
                  extensions: Optional[List[str]] = None,
                  blacklist: bool = False,
-                 progress_callback: Optional[callable] = None):
+                 progress_callback: Optional[callable] = None,
+                 scan_callback: Optional[callable] = None):
         self.local_path = os.path.abspath(local_path)
         self.bucket = bucket
         self.prefix = prefix.rstrip('/')
@@ -63,6 +64,7 @@ class S3Sync:
         self.transfer = S3Transfer(self.s3_client, transfer_config)
 
         self.progress_callback = progress_callback or (lambda op, fp: None)
+        self.scan_callback = scan_callback or (lambda: None)
 
     def sync(self):
         """Perform synchronization between local and S3"""
@@ -129,3 +131,33 @@ class S3Sync:
             logger.error(f"download failed {rel_path}: {str(e)}")
             self.progress_callback('fail', rel_path)
             raise
+
+    def get_sync_stats(self) -> tuple[int, int, int]:
+        """获取同步统计信息
+        Returns:
+            tuple: (总文件数, 待上传数, 待下载数)
+        """
+        to_upload = 0
+        to_download = 0
+        total_files = 0
+        
+        metadata = self.metadata.load()
+        local_files = get_local_files(self.local_path, self.extensions, self.blacklist)
+        total_files = len(local_files)
+
+        # 计算需要上传的文件
+        for rel_path, local_mtime in local_files.items():
+            if rel_path in metadata:
+                s3_mtime = metadata[rel_path]['mtime']
+                if local_mtime != s3_mtime:
+                    to_upload += 1
+            else:
+                to_upload += 1
+
+        # 计算需要下载的文件
+        for rel_path in metadata:
+            if rel_path not in local_files:
+                to_download += 1
+                total_files += 1
+
+        return total_files, to_upload, to_download

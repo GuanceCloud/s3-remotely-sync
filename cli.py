@@ -32,26 +32,38 @@ class SyncStats:
         self.skipped = 0
         self.failed = 0
         self.start_time = time.time()
+        self.total_scanned = 0
+        self.to_upload = 0
+        self.to_download = 0
         
-        # 创建扫描进度条
-        self.scan_pbar = tqdm(
-            desc="扫描文件中",
-            unit="files",
-            bar_format="{desc:<30} |{bar:50}| {n_fmt} files scanned",
-            colour="cyan",
-            ncols=120,
-            position=0,
-            leave=True
+    def update_scan_stats(self, total_files, to_upload, to_download):
+        """update scan stats"""
+        self.total_scanned = total_files
+        self.to_upload = to_upload
+        self.to_download = to_download
+        
+        table = Table(box=box.ROUNDED, show_header=False, border_style="bright_blue")
+        table.add_column("Item", style="cyan")
+        table.add_column("Value", style="green")
+        
+        table.add_row("scan file count", f"{self.total_scanned:,} files")
+        table.add_row("to upload", f"[yellow]↑ {self.to_upload:,} files[/yellow]")
+        table.add_row("to download", f"[yellow]↓ {self.to_download:,} files[/yellow]")
+        table.add_row("sync file count", f"[cyan]{self.to_upload + self.to_download:,} files[/cyan]")
+        
+        panel = Panel(
+            table,
+            title="[bold cyan]scan result[/bold cyan]",
+            border_style="bright_blue",
+            padding=(1, 2)
         )
         
-        # 先扫描获取文件总数
-        self.total_files = self._count_files(local_path, extensions, blacklist)
-        self.scan_pbar.close()
+        console.print(panel)
         
         # 创建同步进度条
         self.pbar = tqdm(
-            total=self.total_files,
-            desc="准备同步",
+            total=self.to_upload + self.to_download,
+            desc="syncing...",
             unit="files",
             bar_format="{desc:<30} |{bar:50}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}] {percentage:3.0f}%",
             colour="green",
@@ -60,52 +72,38 @@ class SyncStats:
             leave=True
         )
 
-    def _count_files(self, local_path, extensions, blacklist):
-        """计算需要同步的文件总数"""
-        total = 0
-        for root, _, files in os.walk(local_path):
-            for file in files:
-                if extensions:
-                    ext = os.path.splitext(file)[1].lower()
-                    if blacklist == (ext in extensions):
-                        continue
-                total += 1
-                self.scan_pbar.update(1)
-        return total
-
     def update_progress(self, operation, filepath):
-        """更新进度条和统计信息"""
+        """update progress bar and stats"""
         filename = os.path.basename(filepath)
         if operation == 'upload':
             self.uploaded += 1
-            self.pbar.set_description(f"↑ 上传: {filename[:30]:<30}")
+            self.pbar.set_description(f"↑ uploading: {filename[:30]:<30}")
         elif operation == 'download':
             self.downloaded += 1
-            self.pbar.set_description(f"↓ 下载: {filename[:30]:<30}")
+            self.pbar.set_description(f"↓ downloading: {filename[:30]:<30}")
         elif operation == 'skip':
             self.skipped += 1
-            self.pbar.set_description(f"○ 跳过: {filename[:30]:<30}")
+            self.pbar.set_description(f"○ skipped: {filename[:30]:<30}")
         elif operation == 'fail':
             self.failed += 1
-            self.pbar.set_description(f"× 失败: {filename[:30]:<30}")
+            self.pbar.set_description(f"× failed: {filename[:30]:<30}")
         
         self.pbar.update(1)
 
     def print_summary(self):
+        """print summary"""
         self.pbar.close()
         elapsed_time = time.time() - self.start_time
-        total_files = self.uploaded + self.downloaded + self.skipped + self.failed
 
-        # 创建统计表格
         table = Table(box=box.ROUNDED, show_header=False, border_style="bright_blue")
         table.add_column("Item", style="cyan")
         table.add_column("Value", style="green")
         
-        table.add_row("file count", f"{total_files:,} files")
-        table.add_row("upload file", f"[green]✓ {self.uploaded:,} 个[/green]")
-        table.add_row("download file", f"[green]✓ {self.downloaded:,} 个[/green]")
-        table.add_row("skip file", f"[yellow]- {self.skipped:,} 个[/yellow]")
-        table.add_row("failed file", f"[red]× {self.failed:,} 个[/red]")
+        table.add_row("file count", f"{self.uploaded + self.downloaded:,} files")
+        table.add_row("upload file", f"[green]✓ {self.uploaded:,} files[/green]")
+        table.add_row("download file", f"[green]✓ {self.downloaded:,} files[/green]")
+        table.add_row("skip file", f"[yellow]- {self.skipped:,} files[/yellow]")
+        table.add_row("failed file", f"[red]× {self.failed:,} files[/red]")
         table.add_row("total time", f"{elapsed_time:.1f} seconds")
         
         panel = Panel(
@@ -119,6 +117,7 @@ class SyncStats:
         console.print(panel)
 
 def main():
+    """main"""
     parser = argparse.ArgumentParser(description='S3 Sync Tool')
     parser.add_argument('local_path', help='Local directory path')
     parser.add_argument('bucket', help='S3 bucket name')
@@ -149,11 +148,6 @@ def main():
             blacklist=args.blacklist
         )
         
-        console.print("\n[bold cyan]开始同步...[/bold cyan]\n")
-        
-        def progress_callback(operation, filepath):
-            stats.update_progress(operation, filepath)
-        
         syncer = S3Sync(
             local_path=args.local_path,
             bucket=args.bucket,
@@ -164,15 +158,21 @@ def main():
             region=region,
             extensions=args.extensions,
             blacklist=args.blacklist,
-            progress_callback=progress_callback
+            progress_callback=lambda op, fp: stats.update_progress(op, fp)
         )
 
+        # get sync file stats
+        total_files, to_upload, to_download = syncer.get_sync_stats()
+        stats.update_scan_stats(total_files, to_upload, to_download)
+        
+        # console.print("\n[bold cyan]start sync...[/bold cyan]\n")
+        
         syncer.sync()
         stats.print_summary()
     except Exception as e:
         if hasattr(stats, 'pbar'):
             stats.pbar.close()
-        console.print(f"[bold red]同步失败: {str(e)}[/bold red]")
+        console.print(f"[bold red]sync failed: {str(e)}[/bold red]")
         sys.exit(1)
 
 if __name__ == '__main__':
