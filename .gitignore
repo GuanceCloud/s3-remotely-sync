@@ -35,6 +35,8 @@ ENV/
 .DS_Store
 Thumbs.db
 
+test/
+
 # Project specific
 .s3sync/
 *.lock 

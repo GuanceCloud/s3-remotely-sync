@@ -1,15 +1,15 @@
-"""Core S3 sync functionality"""
-
 import os
 import time
 import logging
-from typing import List, Set, Optional
+from typing import List, Optional
 import boto3
 from botocore.config import Config
+from s3transfer import TransferConfig, S3Transfer
 from .lock import S3SyncLock
 from .metadata import S3SyncMetadata
 from .utils import get_local_files
 
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class S3Sync:
@@ -31,27 +31,35 @@ class S3Sync:
         self.extensions = set(ext.lower() for ext in (extensions or []))
         self.blacklist = blacklist
         
-        # Initialize S3 client with virtual hosted style configuration
         config = Config(
-            s3={'addressing_style': 'virtual'},
-            region_name=region or 'us-east-1'
+            s3={
+                'use_accelerate_endpoint': False,
+                'addressing_style': 'virtual',
+                'payload_signing_enabled': False,
+            }
         )
         
         self.s3_client = boto3.client(
             's3',
+            config=config,
+            region_name=region,
             endpoint_url=endpoint_url,
             aws_access_key_id=access_key,
-            aws_secret_access_key=secret_key,
-            config=config
+            aws_secret_access_key=secret_key
         )
         
-        # Initialize metadata handler
         self.metadata = S3SyncMetadata(self.s3_client, bucket, prefix)
         
-        # Initialize lock
         lock_dir = os.path.expanduser('~/.s3sync')
         os.makedirs(lock_dir, exist_ok=True)
         self.lock = S3SyncLock(f"{lock_dir}/{bucket}_{prefix.replace('/', '_')}.lock")
+
+        transfer_config = TransferConfig(
+            multipart_threshold=8 * 1024 * 1024,
+            max_concurrency=10
+        )
+
+        self.transfer = S3Transfer(self.s3_client, transfer_config)
 
     def sync(self):
         """Perform synchronization between local and S3"""
@@ -60,11 +68,9 @@ class S3Sync:
             return
 
         try:
-            # Load metadata
             metadata = self.metadata.load()
             local_files = get_local_files(self.local_path, self.extensions, self.blacklist)
 
-            # Compare and sync files
             for rel_path, local_mtime in local_files.items():
                 s3_key = f"{self.prefix}/{rel_path}"
                 
@@ -86,13 +92,11 @@ class S3Sync:
                         'synced_at': time.time()
                     }
 
-            # Check for files to download
             for rel_path in metadata:
                 if rel_path not in local_files:
                     s3_key = f"{self.prefix}/{rel_path}"
                     self._download_file(rel_path, s3_key)
 
-            # Save updated metadata
             self.metadata.save(metadata)
 
         finally:
@@ -102,11 +106,11 @@ class S3Sync:
         """Upload a file to S3"""
         local_path = os.path.join(self.local_path, rel_path)
         logger.info(f"Uploading: {rel_path}")
-        self.s3_client.upload_file(local_path, self.bucket, s3_key)
+        self.transfer.upload_file(local_path, self.bucket, s3_key)
 
     def _download_file(self, rel_path: str, s3_key: str):
         """Download a file from S3"""
         local_path = os.path.join(self.local_path, rel_path)
         os.makedirs(os.path.dirname(local_path), exist_ok=True)
         logger.info(f"Downloading: {rel_path}")
-        self.s3_client.download_file(self.bucket, s3_key, local_path) 
+        self.transfer.download_file(self.bucket, s3_key, local_path)
