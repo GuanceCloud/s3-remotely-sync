@@ -26,20 +26,39 @@ logger = logging.getLogger(__name__)
 console = Console()
 
 class SyncStats:
-    def __init__(self):
+    def __init__(self, local_path, extensions=None, blacklist=False):
         self.uploaded = 0
         self.downloaded = 0
         self.skipped = 0
         self.failed = 0
         self.start_time = time.time()
-        # create progress bar
+        
+        # 先扫描获取文件总数
+        self.total_files = self._count_files(local_path, extensions, blacklist)
+        
+        # 创建进度条，设置总数
         self.pbar = tqdm(
-            total=None,  # total unknown
-            desc="sync progress",
+            total=self.total_files,
+            desc="准备同步",
             unit="files",
-            bar_format="{desc}: {n_fmt} files |{bar}| {percentage:3.0f}% [{elapsed}<{remaining}]",
-            colour="green"
+            bar_format="{desc:<30} |{bar:50}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}] {percentage:3.0f}%",
+            colour="green",
+            ncols=120,
+            position=0,
+            leave=True
         )
+
+    def _count_files(self, local_path, extensions, blacklist):
+        """计算需要同步的文件总数"""
+        total = 0
+        for root, _, files in os.walk(local_path):
+            for file in files:
+                if extensions:
+                    ext = os.path.splitext(file)[1].lower()
+                    if blacklist == (ext in extensions):
+                        continue
+                total += 1
+        return total
 
     def print_summary(self):
         self.pbar.close()
@@ -70,19 +89,20 @@ class SyncStats:
         console.print(panel)
 
     def update_progress(self, operation, filepath):
-        """update progress bar and statistics"""
+        """更新进度条和统计信息"""
+        filename = os.path.basename(filepath)
         if operation == 'upload':
             self.uploaded += 1
-            self.pbar.set_description(f"uploading: {os.path.basename(filepath)}")
+            self.pbar.set_description(f"↑ 上传: {filename[:30]:<30}")
         elif operation == 'download':
             self.downloaded += 1
-            self.pbar.set_description(f"downloading: {os.path.basename(filepath)}")
+            self.pbar.set_description(f"↓ 下载: {filename[:30]:<30}")
         elif operation == 'skip':
             self.skipped += 1
-            self.pbar.set_description(f"skip: {os.path.basename(filepath)}")
+            self.pbar.set_description(f"○ 跳过: {filename[:30]:<30}")
         elif operation == 'fail':
             self.failed += 1
-            self.pbar.set_description(f"failed: {os.path.basename(filepath)}")
+            self.pbar.set_description(f"× 失败: {filename[:30]:<30}")
         
         self.pbar.update(1)
 
@@ -110,10 +130,15 @@ def main():
         logger.error("Access key and secret key must be provided either through arguments or environment variables")
         sys.exit(1)
 
-    stats = SyncStats()
+    # 创建 SyncStats 实例时传入必要参数
+    stats = SyncStats(
+        local_path=args.local_path,
+        extensions=args.extensions,
+        blacklist=args.blacklist
+    )
     
     def progress_callback(operation, filepath):
-        """progress callback function"""
+        """进度回调函数"""
         stats.update_progress(operation, filepath)
         
     syncer = S3Sync(
@@ -130,12 +155,12 @@ def main():
     )
 
     try:
-        console.print("[bold cyan]start sync...[/bold cyan]")
+        console.print("[bold cyan]开始同步...[/bold cyan]\n")
         syncer.sync()
         stats.print_summary()
     except Exception as e:
         stats.pbar.close()
-        console.print(f"[bold red]sync failed: {str(e)}[/bold red]")
+        console.print(f"[bold red]同步失败: {str(e)}[/bold red]")
         sys.exit(1)
 
 if __name__ == '__main__':
