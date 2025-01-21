@@ -59,7 +59,10 @@ class SyncStats:
         )
         
         console.print(panel)
-        
+
+    
+    def start_sync_progress(self):
+        """start sync"""
         # 创建同步进度条
         self.pbar = tqdm(
             total=self.to_upload + self.to_download,
@@ -165,10 +168,12 @@ def main():
         total_files, to_upload, to_download = syncer.get_sync_stats()
         stats.update_scan_stats(total_files, to_upload, to_download)
         
-        # console.print("\n[bold cyan]start sync...[/bold cyan]\n")
-        
-        syncer.sync()
-        stats.print_summary()
+        if to_upload + to_download > 0:
+            stats.start_sync_progress()
+            syncer.sync()
+            stats.print_summary()
+        else:
+            console.print("[bold red]no files to sync[/bold red]")
     except Exception as e:
         if hasattr(stats, 'pbar'):
             stats.pbar.close()

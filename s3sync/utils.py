@@ -8,7 +8,11 @@ def should_sync_file(filename: str, extensions: Set[str], blacklist: bool) -> bo
     if not extensions:
         return True
         
-    ext = os.path.splitext(filename)[1].lower()
+    if filename.startswith('.'):
+        ext = filename.lower()
+    else:
+        ext = os.path.splitext(filename)[1].lower()
+
     if blacklist:
         return ext not in extensions
     return ext in extensions
