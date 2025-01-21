@@ -40,3 +40,5 @@ test/
 # Project specific
 .s3sync/
 *.lock 
+
+.python-version
