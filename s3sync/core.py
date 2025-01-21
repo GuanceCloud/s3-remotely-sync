@@ -50,11 +50,7 @@ class S3Sync:
             aws_secret_access_key=secret_key
         )
         
-        self.metadata = S3SyncMetadata(self.s3_client, bucket, prefix)
-        
-        lock_dir = os.path.expanduser('~/.s3sync')
-        os.makedirs(lock_dir, exist_ok=True)
-        self.lock = S3SyncLock(f"{lock_dir}/{bucket}_{prefix.replace('/', '_')}.lock")
+        self.metadata = S3SyncMetadata(self.s3_client, bucket, prefix) 
 
         transfer_config = TransferConfig(
             multipart_threshold=8 * 1024 * 1024,
@@ -62,6 +58,12 @@ class S3Sync:
         )
 
         self.transfer = S3Transfer(self.s3_client, transfer_config)
+ 
+        self.lock = S3SyncLock(
+            s3_client=self.s3_client,
+            bucket=bucket,
+            remote_lock_key=f"{prefix}/.sync_lock"
+        )
 
         self.progress_callback = progress_callback or (lambda op, fp: None)
         self.scan_callback = scan_callback or (lambda: None)

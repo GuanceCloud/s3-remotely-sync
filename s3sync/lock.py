@@ -1,27 +1,90 @@
-"""Lock mechanism for multi-user synchronization"""
+"""Lock mechanism for multi-user synchronization using S3"""
 
 import os
-import fcntl
+import socket
+import json
+import logging
+from datetime import datetime, timezone
+from typing import Optional
+from botocore.exceptions import ClientError
+
+logging.basicConfig(level=logging.WARNING)
+logger = logging.getLogger(__name__)
 
 class S3SyncLock:
-    """File-based locking mechanism for multi-user synchronization"""
+    """S3-based locking mechanism for multi-user synchronization"""
     
-    def __init__(self, lock_file: str):
-        self.lock_file = lock_file
-        self.lock_handle = None
+    def __init__(self, s3_client, bucket: str, remote_lock_key: str = '.sync_lock'):
+        # Remote lock configuration
+        self.s3_client = s3_client
+        self.bucket = bucket
+        self.remote_lock_key = remote_lock_key
+        self.remote_ttl_seconds = 60 * 15  # 15 minutes
+        
+        # User identification
+        self.user_id = f"{os.getenv('USER', 'unknown')}@{socket.gethostname()}"
 
-    def acquire(self):
-        """Acquire a lock for synchronization"""
-        self.lock_handle = open(self.lock_file, 'w')
+    def _get_remote_lock_info(self) -> Optional[dict]:
+        """Get current remote lock information from S3"""
         try:
-            fcntl.flock(self.lock_handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            response = self.s3_client.get_object(
+                Bucket=self.bucket,
+                Key=self.remote_lock_key
+            )
+            return json.loads(response['Body'].read().decode('utf-8'))
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'NoSuchKey':
+                return None
+            raise
+
+    def _is_remote_lock_expired(self, lock_info: dict) -> bool:
+        """Check if the existing remote lock has expired"""
+        lock_time = datetime.fromisoformat(lock_info['timestamp'])
+        current_time = datetime.now(timezone.utc)
+        return (current_time - lock_time).total_seconds() > self.remote_ttl_seconds
+
+    def acquire(self) -> bool:
+        """Acquire remote lock for synchronization"""
+        current_lock = self._get_remote_lock_info()
+        
+        if current_lock:
+            if not self._is_remote_lock_expired(current_lock):
+                raise Exception(
+                    f"Remote sync is in progress by {current_lock['user_id']} "
+                    f"(started at {current_lock['timestamp']})"
+                )
+            
+        lock_data = {
+            'user_id': self.user_id,
+            'timestamp': datetime.now(timezone.utc).isoformat()
+        }
+        
+        try:
+            self.s3_client.put_object(
+                Bucket=self.bucket,
+                Key=self.remote_lock_key,
+                Body=json.dumps(lock_data),
+                ContentType='application/json'
+            )
             return True
-        except IOError:
+        except ClientError as e:
+            logger.error(f"Failed to acquire remote lock: {e}")
             return False
 
     def release(self):
-        """Release the acquired lock"""
-        if self.lock_handle:
-            fcntl.flock(self.lock_handle, fcntl.LOCK_UN)
-            self.lock_handle.close()
-            self.lock_handle = None 
+        """Release remote lock"""
+        try:
+            self.s3_client.delete_object(
+                Bucket=self.bucket,
+                Key=self.remote_lock_key
+            )
+        except ClientError:
+            pass
+
+    def __enter__(self):
+        """Context manager support"""
+        return self.acquire()
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager support"""
+        self.release() 
