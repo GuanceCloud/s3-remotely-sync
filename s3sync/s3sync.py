@@ -5,9 +5,9 @@ from typing import List, Optional, Dict
 import boto3
 from botocore.config import Config
 from s3transfer import TransferConfig, S3Transfer
-from lock import S3SyncLock
-from metadata import S3SyncMetadata
-from utils import get_local_files
+from .lock import S3SyncLock
+from .metadata import S3SyncMetadata
+from .utils import get_local_files
 
 logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)

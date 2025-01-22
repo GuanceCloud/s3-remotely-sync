@@ -15,7 +15,7 @@ from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
 from rich import box
-from config import Config
+from .config import Config
 
 # Configure logging
 logging.basicConfig(
