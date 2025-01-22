@@ -6,7 +6,7 @@ from typing import Set
 def ignore_file(filename: str) -> bool:
     """Check if file should be ignored"""
 
-    ignore_files = ['.s3-remotely-sync.yml']
+    ignore_files = ['.s3-remotely-sync.yml', '.DS_Store']
 
     return filename in ignore_files
 
