@@ -18,7 +18,7 @@ if sys.platform == 'win32':
 
 setup(
     name="s3-remotely-sync",
-    version="0.1.0",
+    version="0.1.1",
     author="Guance",
     author_email="hmlu06@gmail.com",
     description="A tool for synchronizing files with S3-compatible storage",

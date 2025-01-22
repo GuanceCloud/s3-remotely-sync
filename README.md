@@ -30,9 +30,13 @@ pip install -r requirements.txt
 3. Configure your S3 credentials:
 
 ```bash
-export AWS_ACCESS_KEY_ID=your_access_key
-export AWS_SECRET_ACCESS_KEY=your_secret_key
-export AWS_DEFAULT_REGION=your_region
+python cli.py configure --profile your_profile_name
+```
+
+or use default profile name:
+
+```bash
+python cli.py configure
 ```
 
 For other S3-compatible services, use the `--endpoint-url` parameter.
@@ -42,19 +46,19 @@ For other S3-compatible services, use the `--endpoint-url` parameter.
 Basic synchronization:
 
 ```bash
-python cli.py /local/path --bucket bucket-name --prefix prefix
+python cli.py sync /local/path --bucket bucket-name --prefix prefix
 ```
 
 Sync with custom endpoint (e.g., Aliyun OSS):
 
 ```bash
-python cli.py /local/path --bucket bucket-name --prefix prefix --endpoint-url https://oss-cn-beijing.aliyuncs.com
+python cli.py sync /local/path --bucket bucket-name --prefix prefix --endpoint-url https://oss-cn-beijing.aliyuncs.com
 ```
 
 Exclude specific file types:
 
 ```bash
-python cli.py /local/path --bucket bucket-name --prefix prefix --extensions .tmp .log --blacklist
+python cli.py sync /local/path --bucket bucket-name --prefix prefix --extensions .tmp .log --blacklist
 ```
 
 ## Arguments
@@ -81,7 +85,6 @@ region: oss-cn-shanghai
 extensions:
   - .md
   - .pages
-  - .DS_Store
 blacklist: true
 ```
 
