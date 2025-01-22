@@ -40,10 +40,6 @@ s3rs configure
 
 ### Basic Synchronization
 
-```bash
-s3rs sync /local/path --bucket bucket-name --prefix prefix
-```
-
 Sync with custom endpoint (e.g., Aliyun OSS):
 
 ```bash

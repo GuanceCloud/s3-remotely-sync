@@ -24,7 +24,7 @@ setup(
     description="A tool for synchronizing files with S3-compatible storage",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/GuanceCloud/s3-remotely-sync",
+    url="https://github.com/GuanceCloud/s3-remotely-sync.git",
     packages=find_packages(),
     classifiers=[
         "Development Status :: 3 - Alpha",
