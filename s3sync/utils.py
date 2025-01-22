@@ -3,8 +3,18 @@
 import os
 from typing import Set
 
+def ignore_file(filename: str) -> bool:
+    """Check if file should be ignored"""
+
+    ignore_files = ['.s3-remotely-sync.yml']
+
+    return filename in ignore_files
+
 def should_sync_file(filename: str, extensions: Set[str], blacklist: bool) -> bool:
     """Check if file should be synced based on extension rules"""
+    if ignore_file(filename):
+        return False
+    
     if not extensions:
         return True
         
