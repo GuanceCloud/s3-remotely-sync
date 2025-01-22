@@ -17,7 +17,7 @@ class Config:
         if sys.platform == 'win32':
             self.config_dir = os.path.join(os.environ.get('USERPROFILE', ''), '.s3-remotely-sync')
         else:
-            self.config_dir = os.path.expanduser("~/.dfsync")
+            self.config_dir = os.path.expanduser("~/.s3-remotely-sync")
             
         self.config_file = os.path.join(self.config_dir, "config")
         self.credentials_file = os.path.join(self.config_dir, "credentials")

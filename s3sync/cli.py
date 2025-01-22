@@ -120,81 +120,108 @@ class SyncStats:
         console.print("\n")
         console.print(panel)
 
+def configure(args):
+    """configure credentials"""
+    config = Config()
+    access_key = input("Access Key ID: ").strip()
+    secret_key = input("Secret Access Key: ").strip()
+    profile = args.profile or "default"
+    
+    config.set_credentials(access_key, secret_key, profile)
+    console.print(f"[green]Credentials saved to profile '{profile}'[/green]")
+
 def main():
-    """main"""
     parser = argparse.ArgumentParser(description='S3 Sync Tool')
-    parser.add_argument('local_path', help='Local directory path')
-    parser.add_argument('--bucket', help='S3 bucket name')
-    parser.add_argument('--prefix', help='S3 prefix (directory)')
-    parser.add_argument('--endpoint-url', help='S3-compatible service endpoint URL')
-    parser.add_argument('--access-key', help='Access key ID')
-    parser.add_argument('--secret-key', help='Secret access key')
-    parser.add_argument('--region', help='Region name (e.g., oss-cn-beijing)')
-    parser.add_argument('--extensions', nargs='+', help='File extensions to include/exclude')
-    parser.add_argument('--blacklist', action='store_true', 
-                       help='Treat extensions as blacklist instead of whitelist')
+    subparsers = parser.add_subparsers(dest='command')
+
+    # configure command
+    configure_parser = subparsers.add_parser('configure', help='Configure credentials')
+    configure_parser.add_argument('--profile', help='Configuration profile name')
+
+    # sync command
+    sync_parser = subparsers.add_parser('sync', help='Sync files with S3')
+    sync_parser.add_argument('local_path', help='Local directory path')
+    sync_parser.add_argument('--bucket', help='S3 bucket name')
+    sync_parser.add_argument('--prefix', help='S3 key prefix')
+    sync_parser.add_argument('--endpoint-url', help='S3-compatible service endpoint URL')
+    sync_parser.add_argument('--access-key', help='Access key ID')
+    sync_parser.add_argument('--secret-key', help='Secret access key')
+    sync_parser.add_argument('--profile', default='default', help='Configuration profile name')
+    sync_parser.add_argument('--region', help='Region name')
+    sync_parser.add_argument('--extensions', nargs='+', help='File extensions to process')
+    sync_parser.add_argument('--blacklist', action='store_true', help='Treat extensions as blacklist')
 
     args = parser.parse_args()
-    
-    # Load config from file
-    file_config = Config.load_config(args.local_path)
-    
-    # Convert args to dict and merge with file config
-    cli_config = vars(args)
-    config = Config.merge_config(file_config, cli_config)
-    
-    # Validate required parameters
-    if not config.get('bucket'):
-        logger.error("Bucket must be specified either in config file or command line")
-        sys.exit(1)
-    
-    if not config.get('prefix'):
-        logger.error("Prefix must be specified either in config file or command line")
-        sys.exit(1)
 
-    # Get credentials from environment variables if not provided in arguments
-    access_key = args.access_key or os.environ.get('OSS_ACCESS_KEY_ID') or os.environ.get('AWS_ACCESS_KEY_ID')
-    secret_key = args.secret_key or os.environ.get('OSS_SECRET_ACCESS_KEY') or os.environ.get('AWS_SECRET_ACCESS_KEY')
-    
-    if not access_key or not secret_key:
-        logger.error("Access key and secret key must be provided either through arguments or environment variables")
-        sys.exit(1)
+    if args.command == 'configure':
+        configure(args)
+        return
 
-    try:
-        stats = SyncStats(
-            local_path=args.local_path,
-            extensions=config.get('extensions'),
-            blacklist=config.get('blacklist', False)
-        )
+    if args.command == 'sync':
+        # get credentials
+        config = Config()
+        access_key = args.access_key
+        secret_key = args.secret_key
+
+        # if command line not provide credentials, get from config file
+        if not (access_key and secret_key):
+            access_key, secret_key = config.get_credentials(args.profile)
+            if not (access_key and secret_key):
+                console.print("[red]Error: No credentials provided. Please run 's3rs configure' first or provide credentials via command line.[/red]")
+                sys.exit(1)
+
+        # Load config from file
+        file_config = Config.load_config(args.local_path)
         
-        syncer = S3Sync(
-            local_path=args.local_path,
-            bucket=config['bucket'],
-            prefix=config['prefix'],
-            endpoint_url=config.get('endpoint_url'),
-            access_key=access_key,
-            secret_key=secret_key,
-            region=config.get('region'),
-            extensions=config.get('extensions'),
-            blacklist=config.get('blacklist', False),
-            progress_callback=lambda op, fp: stats.update_progress(op, fp)
-        )
-
-        # get sync file stats
-        total_files, to_upload, to_download = syncer.get_sync_stats()
-        stats.update_scan_stats(total_files, to_upload, to_download)
+        # Convert args to dict and merge with file config
+        cli_config = vars(args)
+        config = Config.merge_config(file_config, cli_config)
         
-        if to_upload + to_download > 0:
-            stats.start_sync_progress()
-            syncer.sync()
-            stats.print_summary()
-        else:
-            console.print("[bold red]no files to sync[/bold red]")
-    except Exception as e:
-        if hasattr(stats, 'pbar'):
-            stats.pbar.close()
-        console.print(f"[bold red]sync failed: {str(e)}[/bold red]")
-        sys.exit(1)
+        # Validate required parameters
+        if not config.get('bucket'):
+            console.print("[red]Bucket must be specified either in config file or command line[/red]")
+            sys.exit(1)
+        
+        if not config.get('prefix'):
+            # Set default prefix to empty string if not specified
+            config['prefix'] = ''
+            console.print("[yellow]No prefix specified, using root of bucket[/yellow]")
+
+        try:
+            stats = SyncStats(
+                local_path=args.local_path,
+                extensions=args.extensions,
+                blacklist=args.blacklist
+            )
+            
+            syncer = S3Sync(
+                local_path=args.local_path,
+                bucket=config['bucket'],
+                prefix=config['prefix'],
+                endpoint_url=config['endpoint_url'],
+                access_key=access_key,
+                secret_key=secret_key,
+                region=config['region'],
+                extensions=config['extensions'],
+                blacklist=config['blacklist'],
+                progress_callback=lambda op, fp: stats.update_progress(op, fp)
+            )
+
+            # get sync file stats
+            total_files, to_upload, to_download = syncer.get_sync_stats()
+            stats.update_scan_stats(total_files, to_upload, to_download)
+            
+            if to_upload + to_download > 0:
+                stats.start_sync_progress()
+                syncer.sync()
+                stats.print_summary()
+            else:
+                console.print("[bold red]no files to sync[/bold red]")
+        except Exception as e:
+            if hasattr(stats, 'pbar'):
+                stats.pbar.close()
+            console.print(f"[bold red]sync failed: {str(e)}[/bold red]")
+            sys.exit(1)
 
 if __name__ == '__main__':
     main() 
