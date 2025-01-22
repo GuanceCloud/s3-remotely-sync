@@ -1,7 +1,20 @@
 from setuptools import setup, find_packages
+import sys
 
 with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
+
+install_requires = [
+    "boto3>=1.26.0",
+    "botocore>=1.29.0",
+    "tqdm>=4.65.0",
+    "rich>=13.0.0",
+    "pyyaml>=6.0.0"
+]
+
+# Windows 特定依赖
+if sys.platform == 'win32':
+    install_requires.append("pywin32>=228")
 
 setup(
     name="s3-remotely-sync",
@@ -22,13 +35,7 @@ setup(
         "Programming Language :: Python :: 3.11",
     ],
     python_requires=">=3.11",
-    install_requires=[
-        "boto3>=1.26.0",
-        "botocore>=1.29.0",
-        "tqdm>=4.65.0",
-        "rich>=13.0.0",
-        "pyyaml>=6.0.0"
-    ],
+    install_requires=install_requires,
     entry_points={
         "console_scripts": [
             "s3rs=s3sync.cli:main",
