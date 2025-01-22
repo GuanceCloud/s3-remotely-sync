@@ -42,29 +42,48 @@ For other S3-compatible services, use the `--endpoint-url` parameter.
 Basic synchronization:
 
 ```bash
-python cli.py /local/path bucket-name prefix
+python cli.py /local/path --bucket bucket-name --prefix prefix
 ```
 
 Sync with custom endpoint (e.g., Aliyun OSS):
 
 ```bash
-python cli.py /local/path bucket-name prefix --endpoint-url https://oss-cn-beijing.aliyuncs.com
+python cli.py /local/path --bucket bucket-name --prefix prefix --endpoint-url https://oss-cn-beijing.aliyuncs.com
 ```
 
 Exclude specific file types:
 
 ```bash
-python cli.py /local/path bucket-name prefix --extensions .tmp .log --blacklist
+python cli.py /local/path --bucket bucket-name --prefix prefix --extensions .tmp .log --blacklist
 ```
 
 ## Arguments
 
 - `local_path`: Local directory path to sync
-- `bucket`: S3 bucket name
-- `prefix`: S3 prefix (directory path in bucket)
+- `--bucket`: S3 bucket name
+- `--prefix`: S3 prefix (directory path in bucket)
 - `--endpoint-url`: S3-compatible service endpoint URL
 - `--extensions`: File extensions to include/exclude
 - `--blacklist`: Treat extensions as blacklist instead of whitelist
+
+## Configuration
+
+You can also use a configuration file `.s3-remotely-sync.yml` to store in your local path root directory that you want to sync.
+
+```yaml
+# S3/OSS configuration
+bucket: s3-remotely-sync
+prefix: test
+endpoint-url: https://oss-cn-shanghai.aliyuncs.com
+region: oss-cn-shanghai
+
+# Sync options
+extensions:
+  - .md
+  - .pages
+  - .DS_Store
+blacklist: true
+```
 
 ## License
 

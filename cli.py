@@ -15,6 +15,7 @@ from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
 from rich import box
+from s3sync.config import Config
 
 # Configure logging
 logging.basicConfig(
@@ -123,8 +124,8 @@ def main():
     """main"""
     parser = argparse.ArgumentParser(description='S3 Sync Tool')
     parser.add_argument('local_path', help='Local directory path')
-    parser.add_argument('bucket', help='S3 bucket name')
-    parser.add_argument('prefix', help='S3 prefix (directory)')
+    parser.add_argument('--bucket', help='S3 bucket name')
+    parser.add_argument('--prefix', help='S3 prefix (directory)')
     parser.add_argument('--endpoint-url', help='S3-compatible service endpoint URL')
     parser.add_argument('--access-key', help='Access key ID')
     parser.add_argument('--secret-key', help='Secret access key')
@@ -134,12 +135,27 @@ def main():
                        help='Treat extensions as blacklist instead of whitelist')
 
     args = parser.parse_args()
+    
+    # Load config from file
+    file_config = Config.load_config(args.local_path)
+    
+    # Convert args to dict and merge with file config
+    cli_config = vars(args)
+    config = Config.merge_config(file_config, cli_config)
+    
+    # Validate required parameters
+    if not config.get('bucket'):
+        logger.error("Bucket must be specified either in config file or command line")
+        sys.exit(1)
+    
+    if not config.get('prefix'):
+        logger.error("Prefix must be specified either in config file or command line")
+        sys.exit(1)
 
     # Get credentials from environment variables if not provided in arguments
     access_key = args.access_key or os.environ.get('OSS_ACCESS_KEY_ID') or os.environ.get('AWS_ACCESS_KEY_ID')
     secret_key = args.secret_key or os.environ.get('OSS_SECRET_ACCESS_KEY') or os.environ.get('AWS_SECRET_ACCESS_KEY')
-    region = args.region or os.environ.get('OSS_REGION') or os.environ.get('AWS_DEFAULT_REGION')
-
+    
     if not access_key or not secret_key:
         logger.error("Access key and secret key must be provided either through arguments or environment variables")
         sys.exit(1)
@@ -147,20 +163,20 @@ def main():
     try:
         stats = SyncStats(
             local_path=args.local_path,
-            extensions=args.extensions,
-            blacklist=args.blacklist
+            extensions=config.get('extensions'),
+            blacklist=config.get('blacklist', False)
         )
         
         syncer = S3Sync(
             local_path=args.local_path,
-            bucket=args.bucket,
-            prefix=args.prefix,
-            endpoint_url=args.endpoint_url,
+            bucket=config['bucket'],
+            prefix=config['prefix'],
+            endpoint_url=config.get('endpoint_url'),
             access_key=access_key,
             secret_key=secret_key,
-            region=region,
-            extensions=args.extensions,
-            blacklist=args.blacklist,
+            region=config.get('region'),
+            extensions=config.get('extensions'),
+            blacklist=config.get('blacklist', False),
             progress_callback=lambda op, fp: stats.update_progress(op, fp)
         )
 
