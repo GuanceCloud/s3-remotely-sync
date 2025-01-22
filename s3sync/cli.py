@@ -15,7 +15,7 @@ from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
 from rich import box
-from s3sync.config import Config
+from config import Config
 
 # Configure logging
 logging.basicConfig(
