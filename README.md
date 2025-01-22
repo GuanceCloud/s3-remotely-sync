@@ -14,54 +14,49 @@ A Python-based synchronization tool for S3-compatible storage services that supp
 
 ## Installation
 
-1. Clone the repository: 
+1. Install Python 3.11 or later
+
+2. Install pip (if not installed)
+
+3. Install s3-remotely-sync
 
 ```bash
-git clone https://github.com/guancecloud/s3-remotely-sync.git
-cd s3-remotely-sync
+pip install s3-remotely-sync
 ```
 
-2. Install the dependencies:
+## Usage
+
+### Configure Credentials
 
 ```bash
-pip install -r requirements.txt
-```
-
-3. Configure your S3 credentials:
-
-```bash
-python cli.py configure --profile your_profile_name
+s3rs configure --profile your_profile_name
 ```
 
 or use default profile name:
 
 ```bash
-python cli.py configure
+s3rs configure
 ```
 
-For other S3-compatible services, use the `--endpoint-url` parameter.
-
-## Usage
-
-Basic synchronization:
+### Basic Synchronization
 
 ```bash
-python cli.py sync /local/path --bucket bucket-name --prefix prefix
+s3rs sync /local/path --bucket bucket-name --prefix prefix
 ```
 
 Sync with custom endpoint (e.g., Aliyun OSS):
 
 ```bash
-python cli.py sync /local/path --bucket bucket-name --prefix prefix --endpoint-url https://oss-cn-beijing.aliyuncs.com
+s3rs sync /local/path --bucket bucket-name --prefix prefix --endpoint-url https://oss-cn-beijing.aliyuncs.com
 ```
 
 Exclude specific file types:
 
 ```bash
-python cli.py sync /local/path --bucket bucket-name --prefix prefix --extensions .tmp .log --blacklist
+s3rs sync /local/path --bucket bucket-name --prefix prefix --extensions .tmp .log --blacklist
 ```
 
-## Arguments
+#### Arguments
 
 - `local_path`: Local directory path to sync
 - `--bucket`: S3 bucket name
@@ -70,7 +65,7 @@ python cli.py sync /local/path --bucket bucket-name --prefix prefix --extensions
 - `--extensions`: File extensions to include/exclude
 - `--blacklist`: Treat extensions as blacklist instead of whitelist
 
-## Configuration
+#### Configuration
 
 You can also use a configuration file `.s3-remotely-sync.yml` to store in your local path root directory that you want to sync.
 
