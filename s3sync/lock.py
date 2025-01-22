@@ -14,12 +14,20 @@ logger = logging.getLogger(__name__)
 class S3SyncLock:
     """S3-based locking mechanism for multi-user synchronization"""
     
-    def __init__(self, s3_client, bucket: str, remote_lock_key: str = '.sync_lock'):
+    def __init__(self, s3_client, bucket: str, remote_lock_key: str = '.sync_lock', remote_ttl_seconds: int = 60 * 15):
+        """Initialize the S3SyncLock"""
+        """
+        s3_client: boto3.client (S3 client)
+        bucket: str (S3 bucket name)
+        remote_lock_key: str (default: '.sync_lock')
+        remote_ttl_seconds: int (default: 15 minutes)
+        """
+
         # Remote lock configuration
         self.s3_client = s3_client
         self.bucket = bucket
         self.remote_lock_key = remote_lock_key
-        self.remote_ttl_seconds = 60 * 15  # 15 minutes
+        self.remote_ttl_seconds = remote_ttl_seconds
         
         # User identification
         self.user_id = f"{os.getenv('USER', 'unknown')}@{socket.gethostname()}"
@@ -78,8 +86,9 @@ class S3SyncLock:
                 Bucket=self.bucket,
                 Key=self.remote_lock_key
             )
-        except ClientError:
-            pass
+        except ClientError as e:
+            logger.error(f"Failed to release remote lock: {e}")
+            raise
 
     def __enter__(self):
         """Context manager support"""
