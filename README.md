@@ -18,7 +18,7 @@ A Python-based synchronization tool for S3-compatible storage services that supp
 
 2. Install pip (if not installed)
 
-3. Install s3-remotely-sync
+3. Install s3-remotely-sync from pypi
 
 ```bash
 pip install s3-remotely-sync
@@ -43,13 +43,13 @@ s3rs configure
 Sync with custom endpoint (e.g., Aliyun OSS):
 
 ```bash
-s3rs sync /local/path --bucket bucket-name --prefix prefix --endpoint-url https://oss-cn-beijing.aliyuncs.com
+s3rs sync /local/path --bucket bucket-name --prefix prefix --endpoint-url https://oss-cn-shanghai.aliyuncs.com
 ```
 
 Exclude specific file types:
 
 ```bash
-s3rs sync /local/path --bucket bucket-name --prefix prefix --extensions .tmp .log --blacklist
+s3rs sync /local/path --bucket bucket-name --prefix prefix --extensions .tmp .log --blacklist --endpoint-url https://oss-cn-shanghai.aliyuncs.com
 ```
 
 #### Arguments
