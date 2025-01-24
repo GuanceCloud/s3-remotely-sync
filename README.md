@@ -4,7 +4,7 @@ A Python-based synchronization tool for S3-compatible storage services that supp
 
 ## Features
 
-- Multi-user concurrent synchronization support
+- Multi-user synchronization lock for a remote bucket: while one user is syncing, others cannot sync the same bucket.
 - File extension filtering (whitelist/blacklist)
 - Recursive directory synchronization
 - Timestamp-based sync decisions
@@ -43,13 +43,13 @@ s3rs configure
 Sync with custom endpoint (e.g., Aliyun OSS):
 
 ```bash
-s3rs sync /local/path --bucket bucket-name --prefix prefix --endpoint-url https://oss-cn-shanghai.aliyuncs.com
+s3rs sync /local/path --bucket bucket-name --prefix prefix --profile your_profile_name --endpoint-url https://oss-cn-shanghai.aliyuncs.com
 ```
 
 Exclude specific file types:
 
 ```bash
-s3rs sync /local/path --bucket bucket-name --prefix prefix --extensions .tmp .log --blacklist --endpoint-url https://oss-cn-shanghai.aliyuncs.com
+s3rs sync /local/path --bucket bucket-name --prefix prefix --extensions .tmp .log --blacklist --profile your_profile_name --endpoint-url https://oss-cn-shanghai.aliyuncs.com
 ```
 
 #### Arguments
@@ -57,6 +57,7 @@ s3rs sync /local/path --bucket bucket-name --prefix prefix --extensions .tmp .lo
 - `local_path`: Local directory path to sync
 - `--bucket`: S3 bucket name
 - `--prefix`: S3 prefix (directory path in bucket)
+- `--profile`: S3 profile name
 - `--endpoint-url`: S3-compatible service endpoint URL
 - `--extensions`: File extensions to include/exclude
 - `--blacklist`: Treat extensions as blacklist instead of whitelist
